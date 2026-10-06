@@ -51,40 +51,80 @@ które już istnieją — zapisuje je jako znane (plik `seen_ads.json`). Od
 kolejnego przejścia (po ~200 s) powiadomienia dostaniesz tylko o faktycznie
 nowych ogłoszeniach.
 
-## 6. Działanie 24/7 na VPS (systemd)
+## 6. Działanie 24/7 na Mikrusie
 
-Na serwerze (Hetzner, Mikrus, AWS Free Tier itd.) po wgraniu projektu i
-instalacji zależności utwórz usługę systemd:
+Mikrus to zwykły VPS (KVM, Debian) z dostępem `root` przez SSH, więc całość
+stawiamy standardowo przez `systemd` — żaden port nie musi być otwierany,
+bot tylko łączy się *wychodząco* do olx.pl i api.telegram.org.
 
-```ini
-# /etc/systemd/system/olx-monitor.service
-[Unit]
-Description=OLX Telegram Monitor
-After=network.target
+1. **Połącz się przez SSH** — dane (adres, port, hasło/klucz) znajdziesz w
+   panelu Mikrusa:
+   ```bash
+   ssh -p <TWÓJ_PORT> root@<numer>.mikrus.xyz
+   ```
 
-[Service]
-Type=simple
-WorkingDirectory=/home/user/Olx
-ExecStart=/home/user/Olx/venv/bin/python3 /home/user/Olx/olx_monitor.py
-Restart=always
-RestartSec=10
-EnvironmentFile=/home/user/Olx/.env
+2. **Zainstaluj zależności systemowe** (Mikrus bazuje na Debianie):
+   ```bash
+   apt update && apt install -y python3-venv python3-pip git
+   ```
 
-[Install]
-WantedBy=multi-user.target
-```
+3. **Wgraj projekt** — np. sklonuj repo albo prześlij plikami przez `scp`:
+   ```bash
+   cd /root
+   git clone <adres-twojego-repo> Olx
+   cd Olx
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env
+   nano .env   # wklej token, chat_id i 4 linki wyszukiwania
+   deactivate
+   ```
 
-Następnie:
+4. **Utwórz usługę systemd:**
+   ```bash
+   cat > /etc/systemd/system/olx-monitor.service <<'EOF'
+   [Unit]
+   Description=OLX Telegram Monitor
+   After=network.target
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now olx-monitor
-sudo systemctl status olx-monitor
-journalctl -u olx-monitor -f   # podgląd logów na żywo
-```
+   [Service]
+   Type=simple
+   WorkingDirectory=/root/Olx
+   ExecStart=/root/Olx/venv/bin/python3 /root/Olx/olx_monitor.py
+   Restart=always
+   RestartSec=10
 
-Usługa wystartuje przy każdym restarcie serwera i sama się podniesie po
-ewentualnym błędzie (`Restart=always`).
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   ```
+   (zmienne z `.env` skrypt wczyta sam przez `python-dotenv` — nie trzeba
+   dodawać `EnvironmentFile`, wystarczy że plik `.env` leży w
+   `WorkingDirectory`).
+
+5. **Włącz i wystartuj:**
+   ```bash
+   systemctl daemon-reload
+   systemctl enable --now olx-monitor
+   systemctl status olx-monitor
+   journalctl -u olx-monitor -f   # podgląd logów na żywo
+   ```
+
+Usługa wystartuje automatycznie po restarcie serwera (również po restarcie
+Mikrusa z panelu) i sama podniesie się po ewentualnym błędzie
+(`Restart=always`). 1 GB RAM-u dostępny na najtańszych planach Mikrusa jest
+całkowicie wystarczający — skrypt zajmuje przy pracy ok. 30-80 MB.
+
+### Uwaga dot. limitów Mikrusa
+
+Na niektórych (zwłaszcza najtańszych) planach Mikrusa obowiązuje limit
+transferu/czasu CPU oraz możliwe okresowe „usypianie” słabo wykorzystanych
+usług widocznych w panelu — ale dotyczy to głównie usług sieciowych
+wystawionych na porty. Proces w tle działający przez `systemd` i korzystający
+tylko z wychodzących połączeń HTTPS zwykle nie jest tym ograniczany. Jeśli
+zauważysz, że bot przestaje odpowiadać, sprawdź `systemctl status
+olx-monitor` i limity w panelu Mikrusa.
 
 ## Uwagi
 
