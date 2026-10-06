@@ -4,4 +4,6 @@ export const API_URL = "https://sandra278.mikrus.xyz:PORT_API/ads";
 export const API_TOKEN = "wymysl-dlugi-losowy-ciag-znakow";
 
 // Co ile sekund apka odświeża listę w tle (podczas gdy ekran jest otwarty).
-export const POLL_INTERVAL_SECONDS = 30;
+// Ustawione na 200 s, tak samo jak CHECK_INTERVAL bota — częstsze odpytywanie
+// nie ma sensu, bo dane na serwerze i tak nie zmienią się szybciej.
+export const POLL_INTERVAL_SECONDS = 200;

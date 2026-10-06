@@ -27,7 +27,8 @@ npm install
    (na Androidzie wprost z aplikacji Expo Go, na iOS aparatem telefonu).
 5. Apka otworzy się w Expo Go i pobierze bieżącą listę ogłoszeń z Twojego
    API na Mikrusie. Pociągnięcie listy w dół odświeża ją ręcznie, dodatkowo
-   apka odpytuje API automatycznie co `POLL_INTERVAL_SECONDS` (domyślnie 30 s).
+   apka odpytuje API automatycznie co `POLL_INTERVAL_SECONDS` (domyślnie 200 s,
+   tyle samo co `CHECK_INTERVAL` bota — możesz to zmienić w `config.js`).
 
 Telefon i komputer nie muszą być w tej samej sieci — apka łączy się
 bezpośrednio do publicznego adresu API na Mikrusie, a nie do komputera.
