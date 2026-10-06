@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -15,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-SEEN_FILE = BASE_DIR / "seen_ads.json"
+ADS_FILE = BASE_DIR / "ads_store.json"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -42,17 +43,17 @@ logging.basicConfig(
 log = logging.getLogger("olx_monitor")
 
 
-def load_seen() -> set:
-    if SEEN_FILE.exists():
+def load_ads() -> dict:
+    if ADS_FILE.exists():
         try:
-            return set(json.loads(SEEN_FILE.read_text(encoding="utf-8")))
+            return json.loads(ADS_FILE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            log.warning("Nie udało się wczytać %s, zaczynam od pustej listy", SEEN_FILE)
-    return set()
+            log.warning("Nie udało się wczytać %s, zaczynam od pustej bazy", ADS_FILE)
+    return {}
 
 
-def save_seen(seen: set) -> None:
-    SEEN_FILE.write_text(json.dumps(sorted(seen)), encoding="utf-8")
+def save_ads(ads: dict) -> None:
+    ADS_FILE.write_text(json.dumps(ads, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def parse_listings(html: str) -> list[dict]:
@@ -120,7 +121,7 @@ def format_message(ad: dict) -> str:
     )
 
 
-def check_all_urls(seen: set, notify: bool) -> set:
+def check_all_urls(ads: dict, notify: bool) -> dict:
     for search_url in SEARCH_URLS:
         try:
             listings = fetch_listings(search_url)
@@ -128,33 +129,34 @@ def check_all_urls(seen: set, notify: bool) -> set:
             log.warning("Nie udało się pobrać %s: %s", search_url, exc)
             continue
 
-        new_ads = [ad for ad in listings if ad["id"] not in seen]
-        for ad in new_ads:
+        new_listings = [ad for ad in listings if ad["id"] not in ads]
+        for ad in new_listings:
             if notify:
                 log.info("Nowe ogłoszenie: %s", ad["title"])
                 send_telegram_message(format_message(ad))
-            seen.add(ad["id"])
+            ad["first_seen"] = datetime.now(timezone.utc).isoformat()
+            ads[ad["id"]] = ad
 
-    return seen
+    return ads
 
 
 def main() -> None:
     if not SEARCH_URLS:
         raise SystemExit("Brak zdefiniowanych linków w SEARCH_URLS (plik .env)")
 
-    seen = load_seen()
-    is_first_run = not seen
+    ads = load_ads()
+    is_first_run = not ads
     log.info("Start monitorowania %d linków, interwał %ds", len(SEARCH_URLS), CHECK_INTERVAL)
 
     while True:
         try:
-            # Przy pierwszym uruchomieniu (pusty seen_ads.json) tylko zapisujemy
-            # istniejące ogłoszenia jako znane, bez wysyłania powiadomień —
-            # inaczej bot zalałby czat wszystkimi aktualnymi wynikami.
-            seen = check_all_urls(seen, notify=not is_first_run)
-            save_seen(seen)
+            # Przy pierwszym uruchomieniu (pusta baza) tylko zapisujemy istniejące
+            # ogłoszenia jako znane, bez wysyłania powiadomień — inaczej bot
+            # zalałby czat wszystkimi aktualnymi wynikami.
+            ads = check_all_urls(ads, notify=not is_first_run)
+            save_ads(ads)
             if is_first_run:
-                log.info("Pierwsze przejście zakończone — zapisano %d ogłoszeń jako znane", len(seen))
+                log.info("Pierwsze przejście zakończone — zapisano %d ogłoszeń jako znane", len(ads))
                 is_first_run = False
         except Exception:
             log.exception("Nieoczekiwany błąd w pętli głównej")

@@ -1,6 +1,9 @@
 .env
 seen_ads.json
+ads_store.json
 __pycache__/
 *.pyc
 .venv/
 venv/
+mobile-app/node_modules/
+mobile-app/.expo/

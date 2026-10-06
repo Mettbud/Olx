@@ -126,6 +126,57 @@ tylko z wychodzących połączeń HTTPS zwykle nie jest tym ograniczany. Jeśli
 zauważysz, że bot przestaje odpowiadać, sprawdź `systemctl status
 olx-monitor` i limity w panelu Mikrusa.
 
+## 7. Podgląd ogłoszeń w apce mobilnej (Expo Go)
+
+Oprócz powiadomień na Telegramie, bot może wystawić proste REST API
+(`api_server.py`), z którego korzysta apka w `mobile-app/` uruchamiana w
+**Expo Go** na telefonie. Expo Go nie hostuje backendu — apka tylko łączy
+się do API działającego na Mikrusie.
+
+### 7.1. Wystaw API na Mikrusie
+
+1. Dopisz w swoim `.env` na serwerze losowy `API_TOKEN` (patrz
+   `.env.example`) — zabezpiecza listę ogłoszeń przed dostępem osób z
+   zewnątrz.
+2. W panelu Mikrusa, w zakładce **Porty**, przydziel sobie jeden publiczny
+   port (np. `20278`) przekierowany na port lokalny, na którym postawisz
+   API (np. `8000`). Zanotuj przydzielony publiczny port — to on trafi do
+   `API_URL` w apce.
+3. Dodaj drugą usługę systemd, obok `olx-monitor`:
+   ```bash
+   cat > /etc/systemd/system/olx-api.service <<'EOF'
+   [Unit]
+   Description=OLX Monitor API
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/root/Olx
+   ExecStart=/root/Olx/venv/bin/uvicorn api_server:app --host 0.0.0.0 --port 8000
+   Restart=always
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+
+   systemctl daemon-reload
+   systemctl enable --now olx-api
+   systemctl status olx-api
+   ```
+4. Sprawdź, czy działa (z dowolnego komputera):
+   ```
+   https://sandra278.mikrus.xyz:<PUBLICZNY_PORT_Z_PANELU>/health
+   ```
+   powinno zwrócić `{"status":"ok"}`.
+
+### 7.2. Uruchom apkę w Expo Go
+
+Pełna instrukcja: [`mobile-app/README.md`](mobile-app/README.md). W skrócie:
+na komputerze (nie na Mikrusie) `cd mobile-app && npm install`, wpisz w
+`config.js` adres z kroku 7.1 i ten sam `API_TOKEN`, uruchom `npx expo
+start`, a na telefonie w aplikacji **Expo Go** zeskanuj kod QR.
+
 ## Uwagi
 
 - Interwał 200 s jest ustawiony tak, by nie prowokować blokad IP / Cloudflare
@@ -134,5 +185,7 @@ olx-monitor` i limity w panelu Mikrusa.
   `parse_listings()` przestaną działać, trzeba je zaktualizować (sprawdź
   aktualne atrybuty `data-cy`/`data-testid` w narzędziach deweloperskich
   przeglądarki).
-- Stan „widzianych” ogłoszeń jest trzymany w `seen_ads.json` — nie commituj
-  tego pliku (jest w `.gitignore`).
+- Pełne dane ogłoszeń (dla Telegrama i dla API/apki) są trzymane w
+  `ads_store.json` — nie commituj tego pliku (jest w `.gitignore`).
+- API (`api_server.py`) i apka w Expo Go są opcjonalne — bot działa (i
+  wysyła Telegram) samodzielnie, bez nich.
