@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,11 +14,34 @@ import {
 
 import { API_URL, API_TOKEN, POLL_INTERVAL_SECONDS } from "./config";
 
+const AdCard = memo(function AdCard({ item }) {
+  return (
+    <Pressable style={styles.card} onPress={() => Linking.openURL(item.url)}>
+      <Text style={styles.title} numberOfLines={2}>
+        {item.title}
+      </Text>
+      <Text style={styles.price}>{item.price}</Text>
+      <Text style={styles.location}>{item.location}</Text>
+    </Pressable>
+  );
+});
+
+// Te same id w tej samej kolejności => nic się wizualnie nie zmieniło,
+// nie ma sensu podmieniać tablicy i przerysowywać całej listy.
+function sameAdIds(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+  }
+  return true;
+}
+
 export default function App() {
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const adsRef = useRef([]);
 
   const loadAds = useCallback(async () => {
     try {
@@ -29,7 +52,11 @@ export default function App() {
         throw new Error(`Serwer zwrócił status ${response.status}`);
       }
       const data = await response.json();
-      setAds(data.ads ?? []);
+      const nextAds = data.ads ?? [];
+      if (!sameAdIds(adsRef.current, nextAds)) {
+        adsRef.current = nextAds;
+        setAds(nextAds);
+      }
     } catch (err) {
       setError(err.message ?? "Nieznany błąd połączenia");
     } finally {
@@ -49,16 +76,8 @@ export default function App() {
     loadAds();
   };
 
-  const renderItem = ({ item }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() => Linking.openURL(item.url)}
-    >
-      <Text style={styles.title}>{item.title}</Text>
-      <Text style={styles.price}>{item.price}</Text>
-      <Text style={styles.location}>{item.location}</Text>
-    </Pressable>
-  );
+  const renderItem = useCallback(({ item }) => <AdCard item={item} />, []);
+  const keyExtractor = useCallback((item) => item.id, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -76,9 +95,13 @@ export default function App() {
       ) : (
         <FlatList
           data={ads}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
